@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>二维码转链接工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #4CAF50;
+            background-color: #f9f9f9;
+        }
+        .upload-area.active {
+            border-color: #4CAF50;
+            background-color: #e8f5e9;
+        }
+        #fileInput {
+            display: none;
+        }
+        #preview {
+            max-width: 300px;
+            max-height: 300px;
+            margin: 20px auto;
+            display: none;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            word-break: break-all;
+        }
+        .btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .btn-secondary {
+            background-color: #f44336;
+        }
+        .btn-secondary:hover {
+            background-color: #d32f2f;
+        }
+        .btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .instructions {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #e3f2fd;
+            border-radius: 5px;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .status {
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>二维码转链接工具</h1>
+        
+        <div class="upload-area" id="dropArea">
+            <p>点击或拖拽二维码图片到此处</p>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+        
+        <div style="text-align: center;">
+            <button class="btn" id="scanBtn" disabled>
+                <span id="scanBtnText">解析二维码</span>
+            </button>
+            <button class="btn btn-secondary" id="resetBtn">重置</button>
+        </div>
+        
+        <div style="text-align: center;">
+            <img id="preview" alt="预览图">
+            <div id="status" class="status"></div>
+        </div>
+        
+        <div id="resultContainer" style="display: none;">
+            <h3>解析结果：</h3>
+            <div id="result"></div>
+            <div style="margin-top: 10px;">
+                <button class="btn" id="copyBtn">复制链接</button>
+                <a class="btn" id="openBtn" target="_blank">打开链接</a>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h3>使用说明：</h3>
+            <ol>
+                <li>点击上方区域选择二维码图片，或直接拖拽图片到该区域</li>
+                <li>点击"解析二维码"按钮获取二维码中的链接</li>
+                <li>解析完成后，可以复制链接或直接打开</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        const dropArea = document.getElementById('dropArea');
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const scanBtn = document.getElementById('scanBtn');
+        const scanBtnText = document.getElementById('scanBtnText');
+        const resetBtn = document.getElementById('resetBtn');
+        const resultContainer = document.getElementById('resultContainer');
+        const result = document.getElementById('result');
+        const copyBtn = document.getElementById('copyBtn');
+        const openBtn = document.getElementById('openBtn');
+        const status = document.getElementById('status');
+        
+        let currentFile = null;
+        let isLoading = false;
+        
+        // 点击上传区域触发文件选择
+        dropArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        // 处理文件选择
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                handleFile(e.target.files[0]);
+            }
+        });
+        
+        // 拖拽上传
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, highlight, false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, unhighlight, false);
+        });
+        
+        function highlight() {
+            dropArea.classList.add('active');
+        }
+        
+        function unhighlight() {
+            dropArea.classList.remove('active');
+        }
+        
+        dropArea.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const file = dt.files[0];
+            handleFile(file);
+        });
+        
+        // 处理上传的文件
+        function handleFile(file) {
+            // 检查是否为图片
+            if (!file.type.match('image.*')) {
+                status.textContent = '请上传图片文件';
+                return;
+            }
+            
+            currentFile = file;
+            status.textContent = '';
+            
+            // 显示预览
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+                scanBtn.disabled = false;
+            };
+            reader.onerror = () => {
+                status.textContent = '图片读取失败';
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        // 解析二维码
+        scanBtn.addEventListener('click', async () => {
+            if (!currentFile || isLoading) return;
+            
+            isLoading = true;
+            scanBtn.disabled = true;
+            scanBtnText.innerHTML = '<span class="loading"></span>解析中...';
+            status.textContent = '正在解析二维码...';
+            
+            try {
+                const qrContent = await decodeQR(currentFile);
+                
+                if (qrContent) {
+                    result.textContent = qrContent;
+                    openBtn.href = qrContent;
+                    resultContainer.style.display = 'block';
+                    status.textContent = '解析成功！';
+                } else {
+                    result.textContent = '未检测到二维码或二维码无法识别';
+                    resultContainer.style.display = 'block';
+                    openBtn.style.display = 'none';
+                    status.textContent = '未检测到二维码内容';
+                }
+            } catch (error) {
+                console.error('解析错误:', error);
+                status.textContent = '解析失败: ' + error.message;
+            } finally {
+                isLoading = false;
+                scanBtn.disabled = false;
+                scanBtnText.textContent = '解析二维码';
+            }
+        });
+        
+        // 解码二维码函数
+        function decodeQR(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        const code = jsQR(imageData.data, imageData.width, imageData.height);
+                        
+                        resolve(code ? code.data : null);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                img.onerror = () => {
+                    reject(new Error('图片加载失败'));
+                };
+                img.src = URL.createObjectURL(file);
+            });
+        }
+        
+        // 重置
+        resetBtn.addEventListener('click', () => {
+            fileInput.value = '';
+            preview.src = '';
+            preview.style.display = 'none';
+            result.textContent = '';
+            resultContainer.style.display = 'none';
+            scanBtn.disabled = true;
+            currentFile = null;
+            openBtn.style.display = 'inline-block';
+            status.textContent = '';
+            scanBtnText.textContent = '解析二维码';
+        });
+        
+        // 复制链接
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(result.textContent)
+                .then(() => {
+                    const originalText = copyBtn.textContent;
+                    copyBtn.textContent = '已复制!';
+                    setTimeout(() => {
+                        copyBtn.textContent = originalText;
+                    }, 2000);
+                })
+                .catch(err => {
+                    console.error('复制失败:', err);
+                    alert('复制失败，请手动复制');
+                });
+        });
+    </script>
+</body>
+</html>
